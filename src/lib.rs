@@ -336,16 +336,16 @@ impl Arena {
     }
 
     /// # Safety
-    /// 
+    ///
     /// The caller must ensure:
     /// - The Arena that allocated `ptr` is still alive
     /// - The Arena has not been moved or deallocated
     /// - `ptr` was created by this Arena (checked at runtime)
     /// - The type `T` matches the type used during allocation
     /// - No concurrent mutable access to the Arena's buffer
-    /// 
+    ///
     /// # Lifetime Contract
-    /// 
+    ///
     /// The returned slice borrows from `&self`, so it cannot outlive the Arena.
     /// However, `ArenaPtr` itself can be copied and stored independently.
     /// This is safe in the Store's design because Arenas are never dropped,
