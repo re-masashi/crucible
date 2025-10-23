@@ -1,0 +1,26 @@
+name: Dependency Check
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'  # Every Monday at midnight
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  outdated:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: stable
+    - name: Install cargo-outdated
+      run: cargo install cargo-outdated || true
+    - name: Check outdated dependencies
+      run: cargo outdated --workspace

@@ -1,0 +1,47 @@
+=== CRUCIBLE OPTIMIZED BENCHMARKS ===
+
+--- Single-threaded ---
+
+Insert (single-threaded)
+  Total time: 731.759483ms
+  Ops/sec: 136656.92
+  ns/op: 7317
+
+Get (single-threaded)
+  Total time: 317.538539ms
+  Ops/sec: 314922.40
+  ns/op: 3175
+
+Update (single-threaded)
+  Total time: 494.77272ms
+  Ops/sec: 202113.00
+  ns/op: 4947
+
+Contains (single-threaded)
+  Total time: 342.391416ms
+  Ops/sec: 292063.40
+  ns/op: 3423
+
+--- Multi-threaded (8 threads) ---
+
+Concurrent reads (8 threads)
+  Total time: 1.260794173s
+  Ops/sec: 634520.70
+  ns/op: 1575
+
+Concurrent writes (8 threads)
+  Total time: 4.000657024s
+  Ops/sec: 199967.15
+  ns/op: 5000
+
+Mixed workload 90/10 read/write (8 threads)
+  Total time: 1.880966355s
+  Ops/sec: 425313.30
+  ns/op: 2351
+
+Batched reads (10 sequential, 8 threads)
+  Total time: 986.361658ms
+  Ops/sec: 811061.53
+  ns/op: 1232
+
+Final store size: 920092

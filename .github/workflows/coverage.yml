@@ -1,0 +1,29 @@
+name: Code Coverage
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: stable
+    - name: Install cargo-tarpaulin
+      run: cargo install cargo-tarpaulin
+    - name: Run coverage
+      run: cargo tarpaulin --verbose --workspace --out Lcov --output-dir ./target/tarpaulin
+    - name: Upload to codecov.io
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./target/tarpaulin/lcov.info
+        fail_ci_if_error: true

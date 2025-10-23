@@ -1,0 +1,38 @@
+   Compiling crucible v0.1.0 (/home/nafi/projects/crucible)
+warning[E0133]: call to unsafe function `std::slice::from_raw_parts` is unsafe and requires unsafe block
+   --> src/lib.rs:373:12
+    |
+373 |         Ok(std::slice::from_raw_parts(ptr.ptr as *const T, ptr.len))
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> src/lib.rs:357:5
+    |
+357 |     pub unsafe fn get_slice<T>(&self, ptr: ArenaPtr) -> Result<&[T], ArenaError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    = note: `#[warn(unsafe_op_in_unsafe_fn)]` (part of `#[warn(rust_2024_compatibility)]`) on by default
+
+warning[E0133]: call to unsafe function `std::slice::from_raw_parts` is unsafe and requires unsafe block
+   --> src/lib.rs:443:27
+    |
+443 |                 return Ok(std::slice::from_raw_parts(ptr.ptr as *const T, ptr.len));
+    |                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ call to unsafe function
+    |
+    = note: for more information, see <https://doc.rust-lang.org/edition-guide/rust-2024/unsafe-op-in-unsafe-fn.html>
+    = note: consult the function's documentation for information on how to avoid undefined behavior
+note: an unsafe function restricts its caller, but its body is safe by default
+   --> src/lib.rs:425:5
+    |
+425 |     pub unsafe fn get_slice<T>(&self, ptr: ArenaPtr) -> Result<&[T], ArenaError> {
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+For more information about this error, try `rustc --explain E0133`.
+warning: `crucible` (lib) generated 2 warnings (run `cargo fix --lib -p crucible` to apply 2 suggestions)
+warning: `crucible` (lib test) generated 2 warnings (2 duplicates)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.00s
+     Running unittests src/lib.rs (target/debug/deps/crucible-e9b5a5bf488c4ef5)
+     Running unittests src/main.rs (target/debug/deps/crucible-def6bf5088061781)
+   Doc-tests crucible
+error: doctest failed, to rerun pass `--doc`
