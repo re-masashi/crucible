@@ -120,10 +120,7 @@ fn test_clear() {
     assert_eq!(store.len(), 0);
 }
 
-// ========================================
 // TTL TESTS
-// ========================================
-
 #[test]
 fn test_insert_with_ttl_seconds() {
     let store = Store::new(Some("test".into()), 16);

@@ -128,21 +128,12 @@ impl TermWithTTL {
     }
 }
 
-// TYPED API - STORABLE VALUE TRAIT
-
-/// Trait for types that can be stored in Crucible with compile-time type safety.
-///
-/// This provides zero-cost type-safe operations on top of the dynamic Term API.
-/// All conversions are inlined and compile to the same code as manual Term usage.
 pub trait StorableValue: Sized {
-    /// Convert this value to a Term for storage
     fn to_term(&self) -> Term;
 
-    /// Try to convert a Term back to this type
     fn from_term(term: &Term) -> Result<Self, StoreError>;
 }
 
-// Implement for i64
 impl StorableValue for i64 {
     #[inline(always)]
     fn to_term(&self) -> Term {
@@ -158,7 +149,6 @@ impl StorableValue for i64 {
     }
 }
 
-// Implement for f64
 impl StorableValue for f64 {
     #[inline(always)]
     fn to_term(&self) -> Term {
@@ -174,7 +164,6 @@ impl StorableValue for f64 {
     }
 }
 
-// Implement for bool
 impl StorableValue for bool {
     #[inline(always)]
     fn to_term(&self) -> Term {
@@ -190,7 +179,6 @@ impl StorableValue for bool {
     }
 }
 
-// Implement for ()
 impl StorableValue for () {
     #[inline(always)]
     fn to_term(&self) -> Term {
@@ -216,7 +204,7 @@ pub enum ArenaError {
 #[derive(Debug)]
 pub enum StoreError {
     KeyNotFound,
-    TypeError, // NEW: Type mismatch in typed API
+    TypeError,
     ArenaError(ArenaError),
 }
 
@@ -336,20 +324,7 @@ impl Arena {
     }
 
     /// # Safety
-    ///
-    /// The caller must ensure:
-    /// - The Arena that allocated `ptr` is still alive
-    /// - The Arena has not been moved or deallocated
-    /// - `ptr` was created by this Arena (checked at runtime)
-    /// - The type `T` matches the type used during allocation
-    /// - No concurrent mutable access to the Arena's buffer
-    ///
-    /// # Lifetime Contract
-    ///
-    /// The returned slice borrows from `&self`, so it cannot outlive the Arena.
-    /// However, `ArenaPtr` itself can be copied and stored independently.
-    /// This is safe in the Store's design because Arenas are never dropped,
-    /// but could be unsafe in other contexts.
+    /// uhm. i don't know for sure, but it's probably not safe.
     #[inline(always)]
     pub unsafe fn get_slice<T>(&self, ptr: ArenaPtr) -> Result<&[T], ArenaError> {
         if ptr.arena_id != self.id {
@@ -419,7 +394,7 @@ impl ShardArena {
     }
 
     /// # Safety
-    /// safe. trust
+    /// prolly safe
     #[inline(always)]
     pub unsafe fn get_slice<T>(&self, ptr: ArenaPtr) -> Result<&[T], ArenaError> {
         if ptr.ptr == 0 {
@@ -613,50 +588,23 @@ impl Store {
         }
     }
 
-    /// Insert a value with compile-time type safety.
-    ///
-    /// This is a zero-cost abstraction - it compiles to the same code as
-    /// manually calling `insert()` with a `Term`.
-    ///
-    /// # Example
-    /// ```
-    /// # use crucible::*;
-    /// # let store = Store::new(Some("test".into()), 16);
-    /// store.insert_typed("count", 42_i64).unwrap();
-    /// store.insert_typed("score", 3.14_f64).unwrap();
-    /// store.insert_typed("active", true).unwrap();
-    /// ```
     #[inline(always)]
     pub fn insert_typed<T: StorableValue>(&self, key: &str, value: T) -> Result<(), StoreError> {
         self.insert(key, value.to_term())
     }
 
-    /// Get a value with compile-time type safety.
-    ///
-    /// # Example
-    /// ```
-    /// # use crucible::*;
-    /// # let store = Store::new(Some("test".into()), 16);
-    /// # store.insert_typed("count", 42_i64).unwrap();
-    /// # store.insert_typed("score", 3.14_f64).unwrap();
-    /// let count: i64 = store.get_typed("count").unwrap();
-    /// let score: f64 = store.get_typed("score").unwrap();
-    /// # Ok::<(), StoreError>(())
-    /// ```
     #[inline(always)]
     pub fn get_typed<T: StorableValue>(&self, key: &str) -> Result<T, StoreError> {
         let term = self.get(key)?;
         T::from_term(&term)
     }
 
-    /// Update a value with compile-time type safety, returning the old value.
     #[inline(always)]
     pub fn update_typed<T: StorableValue>(&self, key: &str, value: T) -> Result<T, StoreError> {
         let old_term = self.update(key, value.to_term())?;
         T::from_term(&old_term)
     }
 
-    /// Insert a value with TTL and compile-time type safety.
     #[inline(always)]
     pub fn insert_typed_with_ttl<T: StorableValue>(
         &self,
@@ -667,7 +615,6 @@ impl Store {
         self.insert_with_ttl(key, value.to_term(), ttl_seconds)
     }
 
-    /// Insert a value with TTL in milliseconds and compile-time type safety.
     #[inline(always)]
     pub fn insert_typed_with_ttl_millis<T: StorableValue>(
         &self,
@@ -678,21 +625,18 @@ impl Store {
         self.insert_with_ttl_millis(key, value.to_term(), ttl_millis)
     }
 
-    /// Remove a key and return the typed value.
     #[inline(always)]
     pub fn remove_typed<T: StorableValue>(&self, key: &str) -> Result<T, StoreError> {
         let term = self.remove(key)?;
         T::from_term(&term)
     }
 
-    /// Insert a string value with proper interning
     #[inline(always)]
     pub fn insert_string(&self, key: &str, value: &str) -> Result<(), StoreError> {
         let interned = self.intern(value);
         self.insert(key, Term::String(interned))
     }
 
-    /// Get a string value with proper resolution
     #[inline(always)]
     pub fn get_string(&self, key: &str) -> Result<String, StoreError> {
         let term = self.get(key)?;
@@ -702,7 +646,6 @@ impl Store {
         }
     }
 
-    /// Insert a string with TTL
     #[inline(always)]
     pub fn insert_string_with_ttl(
         &self,
@@ -714,7 +657,6 @@ impl Store {
         self.insert_with_ttl(key, Term::String(interned), ttl_seconds)
     }
 
-    /// Insert a string with TTL in milliseconds
     #[inline(always)]
     pub fn insert_string_with_ttl_millis(
         &self,
@@ -726,7 +668,6 @@ impl Store {
         self.insert_with_ttl_millis(key, Term::String(interned), ttl_millis)
     }
 
-    /// Update a string value
     #[inline(always)]
     pub fn update_string(&self, key: &str, value: &str) -> Result<String, StoreError> {
         let interned = self.intern(value);
@@ -737,7 +678,6 @@ impl Store {
         }
     }
 
-    /// Remove a string value
     #[inline(always)]
     pub fn remove_string(&self, key: &str) -> Result<String, StoreError> {
         let term = self.remove(key)?;
@@ -747,14 +687,12 @@ impl Store {
         }
     }
 
-    /// Insert raw bytes
     #[inline(always)]
     pub fn insert_bytes(&self, key: &str, value: &[u8]) -> Result<(), StoreError> {
         let ptr = self.alloc_slice(key, value)?;
-        self.insert(key, Term::Array(ptr)) // Reuse Array for now
+        self.insert(key, Term::Array(ptr))
     }
 
-    /// Get raw bytes
     #[inline(always)]
     pub fn get_bytes(&self, key: &str) -> Result<Vec<u8>, StoreError> {
         let term = self.get(key)?;
@@ -769,7 +707,6 @@ impl Store {
         }
     }
 
-    /// Insert bytes with TTL
     #[inline(always)]
     pub fn insert_bytes_with_ttl(
         &self,
