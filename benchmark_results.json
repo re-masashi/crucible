@@ -1,0 +1,47 @@
+{
+  "benchmarks": [
+    {
+      "operation": "Insert (no TTL)",
+      "ets_ops_per_sec": 713841,
+      "crucible_no_bg_ops_per_sec": 2058267,
+      "crucible_with_bg_ops_per_sec": 2938072
+    },
+    {
+      "operation": "Get (no TTL)",
+      "ets_ops_per_sec": 1142693,
+      "crucible_no_bg_ops_per_sec": 3195397,
+      "crucible_with_bg_ops_per_sec": 3461191
+    },
+    {
+      "operation": "Get (with TTL, not expired)",
+      "ets_ops_per_sec": 1031598,
+      "crucible_no_bg_ops_per_sec": 2758140,
+      "crucible_with_bg_ops_per_sec": 3059269
+    },
+    {
+      "operation": "Get (expired keys, lazy delete)",
+      "ets_ops_per_sec": 1323388,
+      "crucible_no_bg_ops_per_sec": 4348281,
+      "crucible_with_bg_ops_per_sec": 6149223
+    },
+    {
+      "operation": "Contains key",
+      "ets_ops_per_sec": 1174813,
+      "crucible_no_bg_ops_per_sec": 3047438,
+      "crucible_with_bg_ops_per_sec": 3542867
+    },
+    {
+      "operation": "Concurrent reads",
+      "ets_ops_per_sec": 2109081,
+      "crucible_no_bg_ops_per_sec": 7785237,
+      "crucible_with_bg_ops_per_sec": 8821465
+    },
+    {
+      "operation": "Concurrent writes",
+      "ets_ops_per_sec": 1831131,
+      "crucible_no_bg_ops_per_sec": 2815764,
+      "crucible_with_bg_ops_per_sec": 3112397
+    }
+  ],
+  "note": "Avg of 3 benchmark runs"
+}
