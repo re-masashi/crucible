@@ -108,6 +108,7 @@ impl Store {
 
                 if term_with_ttl.is_expired() {
                     drop(entry);
+                    self.free_term_data(term_with_ttl.value);
                     self.shards[shard_idx].map.remove(key);
                     return Err(StoreError::KeyNotFound);
                 }
@@ -128,6 +129,7 @@ impl Store {
                 if term_with_ttl.is_expired() {
                     return Err(StoreError::KeyNotFound);
                 }
+                self.free_term_data(term_with_ttl.value);
                 Ok(term_with_ttl.value)
             }
             None => Err(StoreError::KeyNotFound),
@@ -391,15 +393,22 @@ impl Store {
             .as_millis() as u64;
 
         self.shards.par_iter().for_each(|shard| {
-            shard.map.retain(|_, v| {
-                let expires_at = v.expires_at_ms;
-                if expires_at != 0 && now_ms >= expires_at {
+            let keys_to_remove: Vec<String> = shard
+                .map
+                .iter()
+                .filter(|entry| {
+                    let expires_at = entry.value().expires_at_ms;
+                    expires_at != 0 && now_ms >= expires_at
+                })
+                .map(|entry| entry.key().clone())
+                .collect();
+
+            for key in keys_to_remove {
+                if let Some((_, term_with_ttl)) = shard.map.remove(&key) {
+                    self.free_term_data(term_with_ttl.value);
                     removed.fetch_add(1, Ordering::Relaxed);
-                    false
-                } else {
-                    true
                 }
-            });
+            }
         });
 
         removed.load(Ordering::Relaxed)
@@ -445,8 +454,43 @@ impl Store {
 
     pub fn clear(&self) {
         for shard in self.shards.iter() {
+            for entry in shard.map.iter() {
+                self.free_term_data(entry.value().value);
+            }
             shard.map.clear();
         }
+    }
+
+    pub fn arena_stats(&self) -> Vec<super::arena::ArenaStats> {
+        let mut stats = Vec::new();
+        for shard in self.shards.iter() {
+            stats.extend(shard.arena.stats());
+        }
+        stats
+    }
+
+    pub fn total_arena_bytes(&self) -> usize {
+        self.shards
+            .iter()
+            .map(|s| s.arena.total_allocated_bytes())
+            .sum()
+    }
+
+    pub fn compact_arenas(&self) -> usize {
+        self.shards.iter().map(|s| s.arena.compact()).sum()
+    }
+
+    pub fn start_background_compaction(
+        self: std::sync::Arc<Self>,
+        interval_secs: u64,
+        utilization_threshold: f64,
+    ) -> thread::JoinHandle<()> {
+        for shard in self.shards.iter() {
+            shard
+                .arena
+                .start_compaction(interval_secs, utilization_threshold);
+        }
+        thread::spawn(|| ())
     }
 
     pub fn alloc_slice<T: Copy>(
@@ -466,5 +510,32 @@ impl Store {
 
     pub fn resolve(&self, id: InternedStr) -> String {
         self.interner.resolve(id)
+    }
+
+    fn free_term_data(&self, term: Term) {
+        match term {
+            Term::Array(ptr) => {
+                if ptr.ptr != 0 {
+                    let hash = ptr.arena_id as u64;
+                    let shard_idx = self.get_shard_index(hash);
+                    self.shards[shard_idx].arena.dealloc(ptr.arena_id);
+                }
+            }
+            Term::Map(ptr) => {
+                if ptr.ptr != 0 {
+                    let hash = ptr.arena_id as u64;
+                    let shard_idx = self.get_shard_index(hash);
+                    self.shards[shard_idx].arena.dealloc(ptr.arena_id);
+                }
+            }
+            Term::Enum(_, ptr) => {
+                if ptr.ptr != 0 {
+                    let hash = ptr.arena_id as u64;
+                    let shard_idx = self.get_shard_index(hash);
+                    self.shards[shard_idx].arena.dealloc(ptr.arena_id);
+                }
+            }
+            _ => {}
+        }
     }
 }

@@ -13,7 +13,7 @@ impl Shard {
     pub fn new(shard_id: usize) -> Self {
         Self {
             map: DashMap::with_capacity_and_hasher(2048, RandomState::new()),
-            arena: ShardArena::new(2 * 1024 * 1024, shard_id * 10000),
+            arena: ShardArena::new(1024 * 1024, shard_id * 10000),
         }
     }
 }
