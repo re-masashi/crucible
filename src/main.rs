@@ -262,4 +262,227 @@ fn main() {
     store2.stop_background_cleanup();
     cleanup_handle.join().unwrap();
     println!("Background cleanup stopped.\n");
+
+    println!("TEST 3: MEMORY BENCHMARKS");
+    run_memory_benchmarks();
+}
+
+fn get_memory_usage_mb() -> f64 {
+    let status = std::fs::read_to_string("/proc/self/status").unwrap();
+    for line in status.lines() {
+        if line.starts_with("VmRSS:") {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if let Some(kb) = parts.get(1) {
+                return kb.parse::<f64>().unwrap() / 1024.0;
+            }
+        }
+    }
+    0.0
+}
+
+fn get_memory_stats() -> (usize, usize, usize, usize) {
+    let statm = std::fs::read_to_string("/proc/self/statm").unwrap();
+    let parts: Vec<usize> = statm
+        .split_whitespace()
+        .map(|s| s.parse().unwrap_or(0))
+        .collect();
+    let page_size = 4096;
+    (
+        parts[0] * page_size / 1024 / 1024, // total virtual memory (MB)
+        parts[1] * page_size / 1024 / 1024, // resident set size (MB)
+        parts[2] * page_size / 1024 / 1024, // shared pages (MB)
+        parts[3] * page_size / 1024 / 1024, // code segment (MB)
+    )
+}
+
+fn get_detailed_memory_breakdown() -> std::collections::HashMap<String, usize> {
+    let mut map = std::collections::HashMap::new();
+
+    let status = std::fs::read_to_string("/proc/self/status").unwrap();
+    for line in status.lines() {
+        if line.starts_with("VmPeak:")
+            || line.starts_with("VmSize:")
+            || line.starts_with("VmRSS:")
+            || line.starts_with("VmData:")
+            || line.starts_with("VmStk:")
+            || line.starts_with("VmExe:")
+            || line.starts_with("VmLib:")
+            || line.starts_with("VmPTE:")
+        {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 2 {
+                let key = parts[0].trim_end_matches(':').to_string();
+                if let Ok(kb) = parts[1].parse::<usize>() {
+                    map.insert(key, kb / 1024); // Convert to MB
+                }
+            }
+        }
+    }
+    map
+}
+
+fn run_memory_benchmarks() {
+    println!("\nMEMORY BENCHMARKS\n");
+
+    let key_count = 500_000;
+    let value_size = 100;
+
+    println!(
+        "Testing with {} keys, ~{} bytes value each\n",
+        key_count, value_size
+    );
+
+    let mem_stats_before = get_memory_stats();
+    // let detailed_before = get_detailed_memory_breakdown();
+
+    println!("BEFORE");
+    println!(
+        "  Virtual: {} MB, RSS: {} MB",
+        mem_stats_before.0, mem_stats_before.1
+    );
+    println!();
+
+    println!("1. Creating store...");
+    let store = std::sync::Arc::new(Store::new(Some("memory_bench".into()), 64));
+    let mem_before = get_memory_usage_mb();
+    println!("   Memory before: {:.2} MB\n", mem_before);
+
+    println!("2. Inserting {} string keys...", key_count);
+    let start = Instant::now();
+    for i in 0..key_count {
+        let key = format!("key_{}", i);
+        let value = "x".repeat(value_size);
+        store.insert_string(&key, &value).unwrap();
+        if i > 0 && i % 100_000 == 0 {
+            println!("   Inserted {} keys...", i);
+        }
+    }
+    let insert_time = start.elapsed();
+    // let mem_after_strings = get_memory_usage_mb();
+    let mem_stats_after_strings = get_memory_stats();
+    let detailed_after_strings = get_detailed_memory_breakdown();
+
+    println!("   Time: {:?}", insert_time);
+    println!("   VmRSS: {:.2} MB", mem_stats_after_strings.1);
+    println!(
+        "   Memory increase (VmRSS): {:.2} MB",
+        mem_stats_after_strings.1 - mem_stats_before.1
+    );
+    println!(
+        "   Memory per key: {:.2} bytes\n",
+        (mem_stats_after_strings.1 - mem_stats_before.1) as f64 * 1024.0 * 1024.0
+            / key_count as f64
+    );
+
+    println!("3. Inserting {} bytes keys...", key_count);
+    let store2 = std::sync::Arc::new(Store::new(Some("memory_bench2".into()), 64));
+    // let mem_before2 = get_memory_usage_mb();
+    let mem_stats_before2 = get_memory_stats();
+    let start = Instant::now();
+    for i in 0..key_count {
+        let key = format!("bytes_key_{}", i);
+        let value = vec![0u8; value_size];
+        store2.insert_bytes(&key, &value).unwrap();
+        if i > 0 && i % 100_000 == 0 {
+            println!("   Inserted {} keys...", i);
+        }
+    }
+    let insert_time = start.elapsed();
+    // let mem_after_bytes = get_memory_usage_mb();
+    let mem_stats_after_bytes = get_memory_stats();
+    let detailed_after_bytes = get_detailed_memory_breakdown();
+
+    println!("   Time: {:?}", insert_time);
+    println!("   VmRSS: {:.2} MB", mem_stats_after_bytes.1);
+    println!(
+        "   Memory increase (VmRSS): {:.2} MB",
+        mem_stats_after_bytes.1 - mem_stats_before2.1
+    );
+    println!(
+        "   Memory per key: {:.2} bytes\n",
+        (mem_stats_after_bytes.1 - mem_stats_before2.1) as f64 * 1024.0 * 1024.0 / key_count as f64
+    );
+
+    println!("4. Arena stats after {} string keys:", key_count);
+    let arena_stats = store.arena_stats();
+    let total_capacity: usize = arena_stats.iter().map(|s| s.capacity).sum();
+    let total_used: usize = arena_stats.iter().map(|s| s.used_bytes).sum();
+    println!(
+        "   Total arena capacity: {} MB",
+        total_capacity / 1024 / 1024
+    );
+    println!("   Total arena used: {} MB", total_used / 1024 / 1024);
+    println!("   Number of arenas: {}\n", arena_stats.len());
+
+    println!("5. Arena stats after {} bytes keys:", key_count);
+    let arena_stats2 = store2.arena_stats();
+    let total_capacity2: usize = arena_stats2.iter().map(|s| s.capacity).sum();
+    let total_used2: usize = arena_stats2.iter().map(|s| s.used_bytes).sum();
+    println!(
+        "   Total arena capacity: {} MB",
+        total_capacity2 / 1024 / 1024
+    );
+    println!("   Total arena used: {} MB", total_used2 / 1024 / 1024);
+    println!("   Number of arenas: {}\n", arena_stats2.len());
+
+    println!("6. Detailed memory breakdown (VmData = heap + data):");
+    println!("   String store:");
+    println!(
+        "     VmPeak: {} MB",
+        detailed_after_strings.get("VmPeak").unwrap_or(&0)
+    );
+    println!(
+        "     VmSize: {} MB",
+        detailed_after_strings.get("VmSize").unwrap_or(&0)
+    );
+    println!(
+        "     VmRSS:  {} MB",
+        detailed_after_strings.get("VmRSS").unwrap_or(&0)
+    );
+    println!(
+        "     VmData: {} MB",
+        detailed_after_strings.get("VmData").unwrap_or(&0)
+    );
+    println!("   Bytes store:");
+    println!(
+        "     VmPeak: {} MB",
+        detailed_after_bytes.get("VmPeak").unwrap_or(&0)
+    );
+    println!(
+        "     VmSize: {} MB",
+        detailed_after_bytes.get("VmSize").unwrap_or(&0)
+    );
+    println!(
+        "     VmRSS:  {} MB",
+        detailed_after_bytes.get("VmRSS").unwrap_or(&0)
+    );
+    println!(
+        "     VmData: {} MB",
+        detailed_after_bytes.get("VmData").unwrap_or(&0)
+    );
+    println!();
+
+    println!("7. Memory comparison:");
+    println!("   CRUCIBLE (string keys):");
+    println!(
+        "     Total RSS: {} MB",
+        mem_stats_after_strings.1 - mem_stats_before.1
+    );
+    println!(
+        "     Per key: {:.2} bytes",
+        (mem_stats_after_strings.1 - mem_stats_before.1) as f64 * 1024.0 * 1024.0
+            / key_count as f64
+    );
+    println!("   CRUCIBLE (bytes keys):");
+    println!(
+        "     Total RSS: {} MB",
+        mem_stats_after_bytes.1 - mem_stats_before2.1
+    );
+    println!(
+        "     Per key: {:.2} bytes",
+        (mem_stats_after_bytes.1 - mem_stats_before2.1) as f64 * 1024.0 * 1024.0 / key_count as f64
+    );
+    println!();
+
+    println!("MEMORY BENCHMARK FINISHED\n");
 }

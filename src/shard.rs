@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use ahash::RandomState;
 use dashmap::DashMap;
 
@@ -5,7 +7,7 @@ use crate::arena::ShardArena;
 use crate::term::TermWithTTL;
 
 pub struct Shard {
-    pub map: DashMap<String, TermWithTTL, RandomState>,
+    pub map: DashMap<Arc<str>, TermWithTTL, RandomState>,
     pub arena: ShardArena,
 }
 

@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -59,7 +60,17 @@ impl Store {
         let shard_idx = self.get_shard_index(hash);
 
         let entry = TermWithTTL::new(value);
-        self.shards[shard_idx].map.insert(key.to_string(), entry);
+        self.shards[shard_idx].map.insert(Arc::from(key), entry);
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn insert_owned(&self, key: String, value: Term) -> Result<(), StoreError> {
+        let hash = self.hash_key(&key);
+        let shard_idx = self.get_shard_index(hash);
+
+        let entry = TermWithTTL::new(value);
+        self.shards[shard_idx].map.insert(key.into(), entry);
         Ok(())
     }
 
@@ -74,7 +85,22 @@ impl Store {
         let shard_idx = self.get_shard_index(hash);
 
         let entry = TermWithTTL::with_ttl_seconds(value, ttl_seconds);
-        self.shards[shard_idx].map.insert(key.to_string(), entry);
+        self.shards[shard_idx].map.insert(Arc::from(key), entry);
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn insert_with_ttl_owned(
+        &self,
+        key: String,
+        value: Term,
+        ttl_seconds: u64,
+    ) -> Result<(), StoreError> {
+        let hash = self.hash_key(&key);
+        let shard_idx = self.get_shard_index(hash);
+
+        let entry = TermWithTTL::with_ttl_seconds(value, ttl_seconds);
+        self.shards[shard_idx].map.insert(key.into(), entry);
         Ok(())
     }
 
@@ -89,7 +115,22 @@ impl Store {
         let shard_idx = self.get_shard_index(hash);
 
         let entry = TermWithTTL::with_ttl_millis(value, ttl_millis);
-        self.shards[shard_idx].map.insert(key.to_string(), entry);
+        self.shards[shard_idx].map.insert(Arc::from(key), entry);
+        Ok(())
+    }
+
+    #[inline(always)]
+    pub fn insert_with_ttl_millis_owned(
+        &self,
+        key: String,
+        value: Term,
+        ttl_millis: u64,
+    ) -> Result<(), StoreError> {
+        let hash = self.hash_key(&key);
+        let shard_idx = self.get_shard_index(hash);
+
+        let entry = TermWithTTL::with_ttl_millis(value, ttl_millis);
+        self.shards[shard_idx].map.insert(key.into(), entry);
         Ok(())
     }
 
@@ -148,7 +189,35 @@ impl Store {
             .unwrap_or(0);
 
         match self.shards[shard_idx].map.insert(
-            key.to_string(),
+            Arc::from(key),
+            TermWithTTL {
+                value,
+                expires_at_ms: old_ttl_ms,
+            },
+        ) {
+            Some(old) => {
+                if old.is_expired() {
+                    return Err(StoreError::KeyNotFound);
+                }
+                Ok(old.value)
+            }
+            None => Err(StoreError::KeyNotFound),
+        }
+    }
+
+    #[inline(always)]
+    pub fn update_owned(&self, key: String, value: Term) -> Result<Term, StoreError> {
+        let hash = self.hash_key(&key);
+        let shard_idx = self.get_shard_index(hash);
+
+        let old_ttl_ms = self.shards[shard_idx]
+            .map
+            .get(key.as_str())
+            .map(|entry| entry.expires_at_ms)
+            .unwrap_or(0);
+
+        match self.shards[shard_idx].map.insert(
+            key.into(),
             TermWithTTL {
                 value,
                 expires_at_ms: old_ttl_ms,
@@ -170,6 +239,15 @@ impl Store {
     }
 
     #[inline(always)]
+    pub fn insert_typed_owned<T: StorableValue>(
+        &self,
+        key: String,
+        value: T,
+    ) -> Result<(), StoreError> {
+        self.insert_owned(key, value.to_term())
+    }
+
+    #[inline(always)]
     pub fn get_typed<T: StorableValue>(&self, key: &str) -> Result<T, StoreError> {
         let term = self.get(key)?;
         T::from_term(&term)
@@ -178,6 +256,16 @@ impl Store {
     #[inline(always)]
     pub fn update_typed<T: StorableValue>(&self, key: &str, value: T) -> Result<T, StoreError> {
         let old_term = self.update(key, value.to_term())?;
+        T::from_term(&old_term)
+    }
+
+    #[inline(always)]
+    pub fn update_typed_owned<T: StorableValue>(
+        &self,
+        key: String,
+        value: T,
+    ) -> Result<T, StoreError> {
+        let old_term = self.update_owned(key, value.to_term())?;
         T::from_term(&old_term)
     }
 
@@ -192,6 +280,16 @@ impl Store {
     }
 
     #[inline(always)]
+    pub fn insert_typed_with_ttl_owned<T: StorableValue>(
+        &self,
+        key: String,
+        value: T,
+        ttl_seconds: u64,
+    ) -> Result<(), StoreError> {
+        self.insert_with_ttl_owned(key, value.to_term(), ttl_seconds)
+    }
+
+    #[inline(always)]
     pub fn insert_typed_with_ttl_millis<T: StorableValue>(
         &self,
         key: &str,
@@ -199,6 +297,16 @@ impl Store {
         ttl_millis: u64,
     ) -> Result<(), StoreError> {
         self.insert_with_ttl_millis(key, value.to_term(), ttl_millis)
+    }
+
+    #[inline(always)]
+    pub fn insert_typed_with_ttl_millis_owned<T: StorableValue>(
+        &self,
+        key: String,
+        value: T,
+        ttl_millis: u64,
+    ) -> Result<(), StoreError> {
+        self.insert_with_ttl_millis_owned(key, value.to_term(), ttl_millis)
     }
 
     #[inline(always)]
@@ -211,6 +319,12 @@ impl Store {
     pub fn insert_string(&self, key: &str, value: &str) -> Result<(), StoreError> {
         let interned = self.intern(value);
         self.insert(key, Term::String(interned))
+    }
+
+    #[inline(always)]
+    pub fn insert_string_owned(&self, key: String, value: &str) -> Result<(), StoreError> {
+        let interned = self.intern(value);
+        self.insert_owned(key, Term::String(interned))
     }
 
     #[inline(always)]
@@ -255,6 +369,16 @@ impl Store {
     }
 
     #[inline(always)]
+    pub fn update_string_owned(&self, key: String, value: &str) -> Result<String, StoreError> {
+        let interned = self.intern(value);
+        let old_term = self.update_owned(key, Term::String(interned))?;
+        match old_term {
+            Term::String(old_interned) => Ok(self.resolve(old_interned)),
+            _ => Err(StoreError::TypeError),
+        }
+    }
+
+    #[inline(always)]
     pub fn remove_string(&self, key: &str) -> Result<String, StoreError> {
         let term = self.remove(key)?;
         match term {
@@ -267,6 +391,12 @@ impl Store {
     pub fn insert_bytes(&self, key: &str, value: &[u8]) -> Result<(), StoreError> {
         let ptr = self.alloc_slice(key, value)?;
         self.insert(key, Term::Array(ptr))
+    }
+
+    #[inline(always)]
+    pub fn insert_bytes_owned(&self, key: String, value: &[u8]) -> Result<(), StoreError> {
+        let ptr = self.alloc_slice(&key, value)?;
+        self.insert_owned(key, Term::Array(ptr))
     }
 
     #[inline(always)]
@@ -292,6 +422,17 @@ impl Store {
     ) -> Result<(), StoreError> {
         let ptr = self.alloc_slice(key, value)?;
         self.insert_with_ttl(key, Term::Array(ptr), ttl_seconds)
+    }
+
+    #[inline(always)]
+    pub fn insert_bytes_with_ttl_owned(
+        &self,
+        key: String,
+        value: &[u8],
+        ttl_seconds: u64,
+    ) -> Result<(), StoreError> {
+        let ptr = self.alloc_slice(&key, value)?;
+        self.insert_with_ttl_owned(key, Term::Array(ptr), ttl_seconds)
     }
 
     #[inline(always)]
@@ -393,7 +534,7 @@ impl Store {
             .as_millis() as u64;
 
         self.shards.par_iter().for_each(|shard| {
-            let keys_to_remove: Vec<String> = shard
+            let keys_to_remove: Vec<Arc<str>> = shard
                 .map
                 .iter()
                 .filter(|entry| {
@@ -404,7 +545,7 @@ impl Store {
                 .collect();
 
             for key in keys_to_remove {
-                if let Some((_, term_with_ttl)) = shard.map.remove(&key) {
+                if let Some((_, term_with_ttl)) = shard.map.remove(&*key) {
                     self.free_term_data(term_with_ttl.value);
                     removed.fetch_add(1, Ordering::Relaxed);
                 }
